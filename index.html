@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公司內部點餐系統</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="all.css">
+</head>
+<body>
+    <!-- Google Identity Services 與 Google API -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+
+    <!-- 登入畫面 -->
+    <div id="login-view" class="view-container">
+        <div class="glass-card login-card">
+            <div class="login-header">
+                <h2>🍱 點餐系統</h2>
+                <p>請使用公司授權的 Google 帳號登入</p>
+            </div>
+            
+            <button id="google-login-btn" class="btn btn-login" onclick="handleLogin()">
+                <svg class="google-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                    <path fill="none" d="M0 0h48v48H0z"/>
+                </svg>
+                Google 帳號登入
+            </button>
+            <p id="loading-msg" class="info-msg hidden">驗證中，請稍候...</p>
+            <p id="login-error" class="error-msg hidden">未獲授權</p>
+        </div>
+    </div>
+
+    <!-- 應用程式畫面 (驗證成功後顯示) -->
+    <div id="app-view" class="view-container hidden">
+        <header class="app-header">
+            <div class="header-content">
+                <h1 class="logo">午餐點起來</h1>
+                <div class="user-info">
+                    <span id="user-display-name"></span>
+                    <span id="user-role" class="badge"></span>
+                    <button class="btn btn-logout" onclick="handleLogout()">登出</button>
+                </div>
+            </div>
+        </header>
+
+        <main class="app-main">
+            <!-- 管理員專區：設定今日開放餐廳 -->
+            <section id="admin-config-section" class="card hidden">
+                <div class="section-header">
+                    <h3 class="admin-title">⚙️ 今日開放餐廳設定</h3>
+                    <span class="badge badge-admin">管理員專用</span>
+                </div>
+                <div id="restaurant-checkboxes" class="checkbox-group">
+                    <!-- 由 javascript 動態產生 -->
+                </div>
+                <div class="action-row">
+                    <button id="btn-save-config" class="btn btn-primary" onclick="saveTodayConfig()">儲存設定</button>
+                    <span id="admin-config-msg" class="success-msg text-sm hidden">已成功更新！</span>
+                </div>
+            </section>
+
+            <!-- 點餐區塊 -->
+            <section id="ordering-section" class="card">
+                <div class="section-header">
+                    <h3>🍽️ 開始點餐</h3>
+                    <p class="subtitle" id="today-restaurants-label">讀取中...</p>
+                </div>
+                <div id="menu-grid" class="menu-grid">
+                    <!-- 由 javascript 動態產生 -->
+                </div>
+                <div id="order-success-msg" class="success-toast hidden">
+                    點餐成功！
+                </div>
+            </section>
+
+            <!-- 取餐確認與歷史訂單 -->
+            <section id="orders-confirm-section" class="card">
+                <div class="section-header space-between">
+                    <h3>📋 今日點餐清單</h3>
+                    <button class="btn btn-outline" onclick="copyOrdersToClipboard()">複製清單</button>
+                </div>
+                <div class="table-container">
+                    <table id="orders-table">
+                        <thead>
+                            <tr>
+                                <th>時間</th>
+                                <th>訂購人</th>
+                                <th>餐廳</th>
+                                <th>餐點內容</th>
+                                <th>金額</th>
+                                <th>備註</th>
+                            </tr>
+                        </thead>
+                        <tbody id="orders-tbody">
+                            <!-- 由 javascript 動態產生 -->
+                        </tbody>
+                    </table>
+                </div>
+                <p id="copy-msg" class="success-msg text-sm hidden" style="margin-top: 10px;">已複製到剪貼簿！</p>
+                <div class="total-amount-box text-right" style="margin-top: 10px; font-weight: 600;">
+                    總計: $<span id="total-price-span">0</span>
+                </div>
+            </section>
+
+            <!-- 管理員危險操作區 -->
+            <section id="admin-danger-section" class="card alert-card hidden">
+                <div class="section-header">
+                    <h3 class="danger-text">⚠️ 重置訂單</h3>
+                </div>
+                <p class="danger-subtitle">這會清空 `Orders` 表格第二列之後的所有資料（僅保留標題），這個操作無法復原。</p>
+                <button class="btn btn-danger" onclick="clearOrders()">清空今日點餐</button>
+            </section>
+        </main>
+    </div>
+
+    <!-- Javascript -->
+    <script src="all.js"></script>
+</body>
+</html>
