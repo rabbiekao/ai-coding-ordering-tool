@@ -363,6 +363,31 @@ tr:hover td {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* ---------- 客製化選項 ---------- */
+.custom-option-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.custom-option-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    min-width: 40px;
+}
+.custom-option-select {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 13px;
+    outline: none;
+    background: #F9FAFB;
+}
+.custom-option-select:focus {
+    border-color: var(--primary);
+}
+
 /* 響應式設計 */
 @media (max-width: 600px) {
     .menu-grid {

@@ -178,7 +178,7 @@ async function loadCoreData() {
         // 批次取得這三張表，提升效能
         const resp = await gapi.client.sheets.spreadsheets.values.batchGet({
             spreadsheetId: SPREADSHEET_ID,
-            ranges: ['TodayConfig!A2:A', 'Menu!A2:D', 'Orders!A2:F']
+            ranges: ['TodayConfig!A2:A', 'Menu!A2:E', 'Orders!A2:F']
         });
 
         const valRanges = resp.result.valueRanges;
@@ -197,7 +197,8 @@ async function loadCoreData() {
             restaurant: row[0] || '',
             name: row[1] || '',
             price: row[2] || '0',
-            category: row[3] || ''
+            category: row[3] || '',
+            options: row[4] || ''
         }));
 
         // 渲染管理員餐廳勾選功能
@@ -305,6 +306,56 @@ function renderMenuCards() {
     }
 
     availableItems.forEach((item, index) => {
+        let optionsHTML = '';
+        if (item.options) {
+            // 支援半形或全形的 | ｜
+            const groups = item.options.split(/[|｜]/).map(s => s.trim());
+            groups.forEach((g, gIndex) => {
+                // 支援半形或全形的 : ：
+                const parts = g.split(/[:：]/);
+                if (parts.length >= 2) {
+                    const groupName = parts[0].trim();
+                    // 支援半形或全形的 , ，
+                    const choices = parts[1].split(/[,，]/).map(c => c.trim());
+                    
+                    let opts = choices.map(c => `<option value="${c}">${c}</option>`).join('');
+                    optionsHTML += `
+                        <div class="custom-option-group">
+                            <label class="custom-option-label">${groupName}</label>
+                            <select id="option-${index}-${gIndex}" class="custom-option-select">
+                                ${opts}
+                            </select>
+                        </div>
+                    `;
+                }
+            });
+        } else if (item.category && (item.category.includes('飲') || item.category === '茶' || item.category === '咖啡')) {
+            // 如果試算表沒有特別設定，但分類被標記為「飲品」，則自動提供預設的糖冰下拉選單
+            optionsHTML += `
+                <div class="custom-option-group">
+                    <label class="custom-option-label">甜度</label>
+                    <select id="option-${index}-sugar" class="custom-option-select">
+                        <option value="正常糖">正常糖</option>
+                        <option value="少糖">少糖</option>
+                        <option value="半糖">半糖</option>
+                        <option value="微糖">微糖</option>
+                        <option value="無糖">無糖</option>
+                    </select>
+                </div>
+                <div class="custom-option-group">
+                    <label class="custom-option-label">溫度</label>
+                    <select id="option-${index}-ice" class="custom-option-select">
+                        <option value="正常冰">正常冰</option>
+                        <option value="少冰">少冰</option>
+                        <option value="微冰">微冰</option>
+                        <option value="去冰">去冰</option>
+                        <option value="溫的">溫的</option>
+                        <option value="熱的">熱的</option>
+                    </select>
+                </div>
+            `;
+        }
+
         const card = document.createElement('div');
         card.className = 'menu-item-card';
         card.innerHTML = `
@@ -315,7 +366,8 @@ function renderMenuCards() {
                 </div>
                 <div class="menu-item-price">$${item.price}</div>
             </div>
-            <input type="text" id="note-${index}" class="menu-item-input" placeholder="加註備註 (例如：少飯、半糖少冰等)">
+            ${optionsHTML}
+            <input type="text" id="note-${index}" class="menu-item-input" placeholder="加註備註 (例如：少飯、微糖少冰等)">
             <button class="btn btn-primary" style="margin-top:auto;" onclick="submitOrder(${index}, '${item.restaurant}', '${item.name}', '${item.price}')">
                 點 餐
             </button>
@@ -330,6 +382,20 @@ function renderMenuCards() {
 async function submitOrder(index, restaurant, itemName, price) {
     const noteEl = document.getElementById(`note-${index}`);
     const noteVal = noteEl ? noteEl.value.trim() : '';
+
+    // 處理下拉式選單的客製化項目
+    const optSelects = document.querySelectorAll(`select[id^="option-${index}-"]`);
+    let combinedOptions = "";
+    optSelects.forEach(select => {
+        combinedOptions += `[${select.value}]`;
+    });
+    
+    let finalNote = combinedOptions;
+    if (combinedOptions && noteVal) {
+        finalNote += " " + noteVal;
+    } else if (noteVal) {
+        finalNote = noteVal;
+    }
     
     // 取得當前時間 yyyy/mm/dd hh:mm
     const now = new Date();
@@ -340,7 +406,8 @@ async function submitOrder(index, restaurant, itemName, price) {
         String(now.getMinutes()).padStart(2, '0');
 
     // 寫入 Orders 工作表：[點餐時間, 訂購人 Email, 餐廳名稱, 餐點內容, 金額, 備註]
-    const rowData = [timeStr, currentUser.email, restaurant, itemName, price, noteVal];
+    // 為了避免 Google 試算表把日期解析成浮點數序號，我們前面加上單引號強制存為文字
+    const rowData = ["'" + timeStr, currentUser.email, restaurant, itemName, price, finalNote];
 
     try {
         await gapi.client.sheets.spreadsheets.values.append({
@@ -411,7 +478,20 @@ function renderOrders() {
     // 將資料顛倒排列讓最新的一筆在最前面（選項性，這裡按照輸入順序也可）
     ordersData.forEach(row => {
         // [點餐時間, Email, 餐廳名稱, 餐點內容, 金額, 備註]
-        const time = row[0] || '';
+        let time = row[0] || '';
+        
+        // 如果舊資料已經被轉成 Google Sheets 的五萬多數字序號，在這邊動態轉回文字
+        if (!isNaN(time) && Number(time) > 40000) {
+            const excelDate = Number(time);
+            const date = new Date(Math.round((excelDate - 25569) * 86400 * 1000));
+            const yy = date.getUTCFullYear();
+            const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const dd = String(date.getUTCDate()).padStart(2, '0');
+            const hh = String(date.getUTCHours()).padStart(2, '0');
+            const min = String(date.getUTCMinutes()).padStart(2, '0');
+            time = `${yy}/${mm}/${dd} ${hh}:${min}`;
+        }
+        
         const email = row[1] || '';
         const res = row[2] || '';
         const item = row[3] || '';
